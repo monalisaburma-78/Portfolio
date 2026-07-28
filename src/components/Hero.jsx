@@ -7,40 +7,76 @@ import { GitHubIcon, LinkedInIcon, MailIcon } from './SocialIcons';
 
 const Hero = () => {
   const videoRef = useRef(null);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [ended, setEnded] = useState(false);
+  const startedRef = useRef(false);
 
   useEffect(() => {
     AOS.init({ duration: 1000, once: true, easing: 'ease-out' });
-    const v = videoRef.current;
-    if (v) {
-      v.muted = true;
-      v.play().catch(() => setIsPlaying(false));
-    }
   }, []);
+
+  // Start the avatar video (with audio) ~2s after the intro finishes. The intro plays
+  // on every page load and always fires `mona-intro-done` (hard fallback included).
+  // Falls back to first user interaction if the browser blocks autoplay-with-sound.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const startWithSound = () => {
+      if (startedRef.current) return;
+      startedRef.current = true;
+      try { v.currentTime = 0; } catch (_) { /* ignore */ }
+      v.muted = false;
+      const p = v.play();
+      if (p && p.catch) {
+        p.then(() => setIsPlaying(true)).catch(() => {
+          // Autoplay-with-sound blocked → retry on the first user interaction.
+          startedRef.current = false;
+          armInteraction();
+        });
+      } else {
+        setIsPlaying(true);
+      }
+    };
+
+    const armInteraction = () => {
+      const handler = () => {
+        ['pointerdown', 'keydown', 'touchstart'].forEach((e) => window.removeEventListener(e, handler));
+        startWithSound();
+      };
+      ['pointerdown', 'keydown', 'touchstart'].forEach((e) =>
+        window.addEventListener(e, handler, { once: true, passive: true }));
+    };
+
+    let delayTimer;
+    const onIntroDone = () => { delayTimer = setTimeout(startWithSound, 2000); };
+    window.addEventListener('mona-intro-done', onIntroDone, { once: true });
+
+    return () => {
+      clearTimeout(delayTimer);
+      window.removeEventListener('mona-intro-done', onIntroDone);
+    };
+  }, []);
+
+  const handleEnded = () => { setIsPlaying(false); setEnded(true); };
 
   const togglePlay = (e) => {
     e.stopPropagation();
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) {
+    if (v.ended || ended) {           // Replay from the start
+      try { v.currentTime = 0; } catch (_) { /* ignore */ }
+      setEnded(false);
+      v.muted = false;
+      v.play();
+      setIsPlaying(true);
+    } else if (v.paused) {
+      v.muted = false;
       v.play();
       setIsPlaying(true);
     } else {
       v.pause();
       setIsPlaying(false);
-    }
-  };
-
-  const toggleMute = (e) => {
-    e.stopPropagation();
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = !v.muted;
-    setIsMuted(v.muted);
-    if (!v.muted && v.paused) {
-      v.play();
-      setIsPlaying(true);
     }
   };
 
@@ -151,16 +187,18 @@ const Hero = () => {
           {/* Gradient border frame — identical to the About photo card */}
           <div className="relative rounded-3xl p-[2px] bg-gradient-to-br from-violet-500/70 via-cyan-400/30 to-violet-500/50 shadow-[0_25px_60px_rgba(124,58,237,0.28)]">
             <div className="relative rounded-3xl overflow-hidden bg-[#0d0b16] aspect-[9/16]">
-              {/* The portrait video — native ratio preserved, never cropped or stretched */}
+              {/* The portrait video — plays once (with audio), then holds on the last frame.
+                  It's scaled up from the top so the baked-in "Veo" watermark at the bottom of
+                  the source video is cropped out by the card's rounded overflow (no re-encode). */}
               <video
                 ref={videoRef}
-                loop
-                muted
-                autoPlay
                 playsInline
                 preload="auto"
+                onEnded={handleEnded}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => { const v = videoRef.current; if (v && !v.ended) setIsPlaying(false); }}
                 className="w-full h-full object-cover object-center"
-                style={{ filter: 'brightness(0.96) contrast(1.03) saturate(1.06)' }}
+                style={{ filter: 'brightness(0.96) contrast(1.03) saturate(1.06)', transform: 'scale(1.07)', transformOrigin: 'top center' }}
               >
                 <source src={heroVideo} type="video/mp4" />
                 Your browser does not support the video tag.
@@ -169,26 +207,17 @@ const Hero = () => {
               {/* Bottom scrim so controls stay legible */}
               <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
 
-              {/* Media controls (bottom-right, inside the card) */}
+              {/* Media control — Play / Pause / Replay (bottom-right, inside the card) */}
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
                 <button
-                  onClick={toggleMute}
-                  aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-                  className="w-9 h-9 rounded-full border border-white/25 bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-violet-600/70 hover:border-violet-400 transition-all duration-300"
-                >
-                  {isMuted ? (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0014 8.03v2.21l2.45 2.45c.03-.2.05-.42.05-.69zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06a8.99 8.99 0 003.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 8.03v7.94A4.5 4.5 0 0016.5 12zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-                  )}
-                </button>
-                <button
                   onClick={togglePlay}
-                  aria-label={isPlaying ? 'Pause video' : 'Play video'}
+                  aria-label={isPlaying ? 'Pause video' : ended ? 'Replay video' : 'Play video'}
                   className="w-9 h-9 rounded-full border border-white/25 bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-violet-600/70 hover:border-violet-400 transition-all duration-300"
                 >
                   {isPlaying ? (
                     <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                  ) : ended ? (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
                   ) : (
                     <svg className="w-3.5 h-3.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                   )}
