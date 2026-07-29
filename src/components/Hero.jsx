@@ -5,80 +5,134 @@ import heroVideo from '../assets/hero video/monalisa-hero.mp4';
 import { heroContent, socialLinks } from '../data/portfolioData';
 import { GitHubIcon, LinkedInIcon, MailIcon } from './SocialIcons';
 
+// How long the avatar holds a natural, front-facing smile after the Hero appears,
+// before the introduction speech begins.
+const SMILE_HOLD_MS = 900;
+
 const Hero = () => {
   const videoRef = useRef(null);
+  const freezeRef = useRef(null);          // canvas holding the "settled smile" still frame
   const [isPlaying, setIsPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [needsTap, setNeedsTap] = useState(false);   // autoplay-with-sound was blocked
+  const [speaking, setSpeaking] = useState(false);   // true once the video actually plays (fades the still out)
+  const [freezeReady, setFreezeReady] = useState(false);
   const startedRef = useRef(false);
+  const holdTimerRef = useRef(null);
 
   useEffect(() => {
     AOS.init({ duration: 1000, once: true, easing: 'ease-out' });
   }, []);
 
-  // Start the avatar video (with audio) ~2s after the intro finishes. The intro plays
-  // on every page load and always fires `mona-intro-done` (hard fallback included).
-  // Falls back to first user interaction if the browser blocks autoplay-with-sound.
+  // ── Capture a still "smiling" frame from the END of the clip ─────────────────
+  // The clip is authored to settle on a calm, front-facing pose on its last frame.
+  // We snapshot that frame to a canvas and show it (instead of the open-mouthed
+  // frame 0) while the Hero settles in, then crossfade into playback from the start.
+  // capture() is idempotent (safe to call repeatedly); we drive it from the `seeked`
+  // event AND two short fallbacks so it's reliable across StrictMode/dev double-mounts
+  // and browsers that skip a redundant seek.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+    let t1, t2;
 
-    const INTERACT = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll'];
-
-    // Unmute in place on the first user interaction (no restart, no unmute button).
-    const armUnmute = () => {
-      const unmute = () => {
-        const vid = videoRef.current;
-        if (vid) vid.muted = false;
-        INTERACT.forEach((e) => window.removeEventListener(e, unmute));
-      };
-      INTERACT.forEach((e) => window.addEventListener(e, unmute, { once: true, passive: true }));
+    const capture = () => {
+      try {
+        const c = freezeRef.current;
+        const w = v.videoWidth;
+        const h = v.videoHeight;
+        if (!c || !w || !h) return;
+        c.width = w;
+        c.height = h;
+        c.getContext('2d').drawImage(v, 0, 0, w, h);
+        setFreezeReady(true);
+      } catch (_) { /* tainted/unsupported — fall back to the video's own last frame */ }
     };
 
-    const startVideo = () => {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      try { v.currentTime = 0; } catch (_) { /* ignore */ }
-      // Try WITH sound first (works if a gesture already happened, e.g. Skip Intro / a click).
-      v.muted = false;
-      Promise.resolve(v.play())
-        .then(() => setIsPlaying(true))
-        .catch(() => {
-          // Autoplay-with-sound blocked → play MUTED so it still auto-plays visibly,
-          // then unmute on the first user interaction.
-          v.muted = true;
-          Promise.resolve(v.play()).then(() => setIsPlaying(true)).catch(() => {});
-          armUnmute();
-        });
+    const onSeeked = () => capture();
+
+    const onLoaded = () => {
+      const d = v.duration;
+      const target = (isFinite(d) && d > 0.15) ? Math.max(0, d - 0.05) : 0;
+      v.addEventListener('seeked', onSeeked);
+      // Park the video on the last frame (hidden under the still), ready to jump to 0
+      // and play the moment speech begins.
+      try { v.currentTime = target; } catch (_) { capture(); }
+      t1 = setTimeout(capture, 200);   // fallbacks if 'seeked' is missed
+      t2 = setTimeout(capture, 600);
     };
 
-    let delayTimer;
-    const onIntroDone = () => { delayTimer = setTimeout(startVideo, 2000); };
-    window.addEventListener('mona-intro-done', onIntroDone, { once: true });
-
-    // Safety net: if the intro event never arrives (e.g. intro disabled), start anyway.
-    const safety = setTimeout(() => { if (!startedRef.current) startVideo(); }, 16000);
+    if (v.readyState >= 1 && isFinite(v.duration)) onLoaded();
+    else v.addEventListener('loadedmetadata', onLoaded, { once: true });
 
     return () => {
-      clearTimeout(delayTimer);
-      clearTimeout(safety);
-      window.removeEventListener('mona-intro-done', onIntroDone);
+      v.removeEventListener('loadedmetadata', onLoaded);
+      v.removeEventListener('seeked', onSeeked);
+      clearTimeout(t1);
+      clearTimeout(t2);
     };
   }, []);
 
+  // ── Start the introduction: play from the beginning WITH sound ───────────────
+  const startVideo = () => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    const v = videoRef.current;
+    if (!v) return;
+    try { v.currentTime = 0; } catch (_) { /* ignore */ }
+    v.muted = false;
+    Promise.resolve(v.play())
+      .then(() => { setSpeaking(true); setIsPlaying(true); setNeedsTap(false); })
+      .catch(() => {
+        // Autoplay-with-sound blocked by the browser → keep the calm smile on screen
+        // and invite a single tap. We never auto-play muted.
+        startedRef.current = false;
+        setNeedsTap(true);
+      });
+  };
+
+  // ── Kick off ~SMILE_HOLD_MS after the robot intro finishes ───────────────────
+  useEffect(() => {
+    const begin = () => { holdTimerRef.current = setTimeout(startVideo, SMILE_HOLD_MS); };
+    window.addEventListener('mona-intro-done', begin, { once: true });
+    // Safety net: if the intro event never arrives, begin anyway.
+    const safety = setTimeout(() => { if (!startedRef.current && !needsTap) begin(); }, 15000);
+    return () => {
+      window.removeEventListener('mona-intro-done', begin);
+      clearTimeout(safety);
+      clearTimeout(holdTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleEnded = () => { setIsPlaying(false); setEnded(true); };
+
+  // User taps the "hear my introduction" prompt → play with audio from the start.
+  const handleTap = (e) => {
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    try { v.currentTime = 0; } catch (_) { /* ignore */ }
+    v.muted = false;
+    Promise.resolve(v.play())
+      .then(() => { setSpeaking(true); setIsPlaying(true); setNeedsTap(false); })
+      .catch(() => {});
+  };
 
   const togglePlay = (e) => {
     e.stopPropagation();
     const v = videoRef.current;
     if (!v) return;
-    if (v.ended || ended) {           // Replay from the start
+    if (v.ended || ended) {              // Replay from the start
       try { v.currentTime = 0; } catch (_) { /* ignore */ }
       setEnded(false);
       v.muted = false;
+      setSpeaking(true);
       v.play();
       setIsPlaying(true);
     } else if (v.paused) {
       v.muted = false;
+      setSpeaking(true);
       v.play();
       setIsPlaying(true);
     } else {
@@ -211,11 +265,49 @@ const Hero = () => {
                 Your browser does not support the video tag.
               </video>
 
+              {/* Settled-smile still: a snapshot of the clip's final calm pose, shown while the
+                  Hero settles and before speech begins. Crossfades out the moment playback starts.
+                  Matches the video's crop/transform so the two align pixel-for-pixel. */}
+              <canvas
+                ref={freezeRef}
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
+                style={{
+                  transform: 'scale(1.07)',
+                  transformOrigin: 'top center',
+                  // Shown instantly once captured (it's identical to the paused video frame
+                  // beneath, so there's no visible pop); only the fade-OUT into live speech
+                  // is animated. Transitioning the fade-in proved fragile across renders.
+                  opacity: freezeReady && !speaking ? 1 : 0,
+                  transition: speaking ? 'opacity 0.45s ease-out' : 'none',
+                }}
+              />
+
               {/* Bottom scrim so controls stay legible */}
               <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent pointer-events-none" />
 
+              {/* "Tap to hear my introduction" — shown only if autoplay-with-sound was blocked */}
+              {needsTap && !speaking && (
+                <button
+                  onClick={handleTap}
+                  type="button"
+                  aria-label="Tap to hear my introduction"
+                  className="absolute inset-0 z-10 flex items-center justify-center bg-black/25 backdrop-blur-[1px] transition-opacity duration-300"
+                >
+                  <span className="flex items-center gap-2.5 px-5 py-3 rounded-full bg-white/10 border border-white/25 backdrop-blur-md text-white text-[13px] sm:text-sm font-semibold shadow-[0_0_30px_rgba(124,58,237,0.5)] hover:bg-violet-600/45 hover:border-violet-300 transition-all duration-300">
+                    <span className="relative flex items-center justify-center">
+                      <span className="animate-ping absolute inline-flex h-6 w-6 rounded-full bg-violet-400/50" />
+                      <svg className="relative w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0014 7.97v8.05A4.5 4.5 0 0016.5 12zM14 3.23v2.06a7 7 0 010 13.42v2.06a9 9 0 000-17.54z" />
+                      </svg>
+                    </span>
+                    Tap to hear my introduction
+                  </span>
+                </button>
+              )}
+
               {/* Media control — Play / Pause / Replay (bottom-right, inside the card) */}
-              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+              <div className="absolute bottom-3 right-3 flex items-center gap-2 z-20">
                 <button
                   onClick={togglePlay}
                   aria-label={isPlaying ? 'Pause video' : ended ? 'Replay video' : 'Play video'}

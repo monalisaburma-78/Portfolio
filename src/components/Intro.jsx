@@ -186,9 +186,9 @@ const Intro = () => {
 
 const CSS = `
 .mona-root{position:fixed;inset:0;z-index:100000;overflow:hidden;background:#05040a;
-  font-family:'JetBrains Mono',ui-monospace,monospace;animation:monaRootOut .9s ease-in forwards;animation-delay:13.1s;}
+  font-family:'JetBrains Mono',ui-monospace,monospace;animation:monaRootOut .45s ease-in forwards;animation-delay:13.55s;}
 .mona-skipping{animation:monaSkipOut .42s ease-in forwards!important;animation-delay:0s!important;}
-@keyframes monaRootOut{0%,55%{opacity:1}100%{opacity:0;visibility:hidden}}
+@keyframes monaRootOut{to{opacity:0;visibility:hidden}}
 @keyframes monaSkipOut{to{opacity:0;visibility:hidden}}
 
 .mona-lab{position:absolute;inset:0;background:
