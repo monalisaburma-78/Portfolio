@@ -22,38 +22,45 @@ const Hero = () => {
     const v = videoRef.current;
     if (!v) return;
 
-    const startWithSound = () => {
+    const INTERACT = ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll'];
+
+    // Unmute in place on the first user interaction (no restart, no unmute button).
+    const armUnmute = () => {
+      const unmute = () => {
+        const vid = videoRef.current;
+        if (vid) vid.muted = false;
+        INTERACT.forEach((e) => window.removeEventListener(e, unmute));
+      };
+      INTERACT.forEach((e) => window.addEventListener(e, unmute, { once: true, passive: true }));
+    };
+
+    const startVideo = () => {
       if (startedRef.current) return;
       startedRef.current = true;
       try { v.currentTime = 0; } catch (_) { /* ignore */ }
+      // Try WITH sound first (works if a gesture already happened, e.g. Skip Intro / a click).
       v.muted = false;
-      const p = v.play();
-      if (p && p.catch) {
-        p.then(() => setIsPlaying(true)).catch(() => {
-          // Autoplay-with-sound blocked → retry on the first user interaction.
-          startedRef.current = false;
-          armInteraction();
+      Promise.resolve(v.play())
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          // Autoplay-with-sound blocked → play MUTED so it still auto-plays visibly,
+          // then unmute on the first user interaction.
+          v.muted = true;
+          Promise.resolve(v.play()).then(() => setIsPlaying(true)).catch(() => {});
+          armUnmute();
         });
-      } else {
-        setIsPlaying(true);
-      }
-    };
-
-    const armInteraction = () => {
-      const handler = () => {
-        ['pointerdown', 'keydown', 'touchstart'].forEach((e) => window.removeEventListener(e, handler));
-        startWithSound();
-      };
-      ['pointerdown', 'keydown', 'touchstart'].forEach((e) =>
-        window.addEventListener(e, handler, { once: true, passive: true }));
     };
 
     let delayTimer;
-    const onIntroDone = () => { delayTimer = setTimeout(startWithSound, 2000); };
+    const onIntroDone = () => { delayTimer = setTimeout(startVideo, 2000); };
     window.addEventListener('mona-intro-done', onIntroDone, { once: true });
+
+    // Safety net: if the intro event never arrives (e.g. intro disabled), start anyway.
+    const safety = setTimeout(() => { if (!startedRef.current) startVideo(); }, 16000);
 
     return () => {
       clearTimeout(delayTimer);
+      clearTimeout(safety);
       window.removeEventListener('mona-intro-done', onIntroDone);
     };
   }, []);

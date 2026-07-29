@@ -436,7 +436,7 @@ function Environment({ startRef, onButton }) {
         });
         envFadeRef.current = env;
       }
-      grid.material.opacity = track(t, [[0.5, 0], [1.85, 0.16], [10.9, 0.12], [11.4, 0.3], [12, 0.25]]);
+      grid.material.opacity = track(t, [[0.5, 0], [1.85, 0.16], [12.4, 0.12], [12.9, 0.32], [13.9, 0.28]]);
 
       // Glowing energy core the robot materializes from
       const glow = track(t, [[0.35, 0], [1.2, 1], [1.75, 0.55], [2.3, 0]]);
@@ -464,32 +464,35 @@ function Environment({ startRef, onButton }) {
       }
       if (pMain.current && t > 2.8) {
         pMain.current.material.opacity = 0.14 * (1 + Math.sin(t * 13) * 0.08);
-        pMain.current.material.emissiveIntensity = 0.5 + track(t, [[10.95, 0], [11.25, 2.5], [12, 1.3]]);
+        pMain.current.material.emissiveIntensity = 0.5 + track(t, [[12.4, 0], [12.65, 2.5], [13.9, 1.4]]);
       }
 
-      // ---- Launch: button press → flare, energy rings, burst, circuits ----
+      // ---- Button PRESS lands at ~11.1s (physical press + a confirming button glow),
+      //      then a deliberate ~1.3s hold before the launch FX fire at ~12.4s. ----
       if (btn.current) {
-        const press = track(t, [[10.9, 0], [11.12, 1], [11.35, 0.3], [12, 0.3]]);
+        const press = track(t, [[10.9, 0], [11.12, 1], [11.35, 0.3], [13.9, 0.3]]);
         btn.current.position.z = 0.07 - press * 0.05;
-        btn.current.material.emissiveIntensity = 0.8 + track(t, [[10.9, 0], [11.2, 5], [12, 3]]);
+        // small confirm-glow on press, held, then the big flare when the launch begins
+        btn.current.material.emissiveIntensity = 0.8 + track(t, [[10.9, 0], [11.15, 2], [12.4, 1.8], [12.62, 5], [13.9, 3.2]]);
       }
-      if (flare.current) flare.current.intensity = track(t, [[10.95, 0], [11.2, 90], [12, 25]]);
+      // ---- Launch FX (flare, energy rings, burst, circuits) — deferred to ~12.4s ----
+      if (flare.current) flare.current.intensity = track(t, [[12.4, 0], [12.62, 90], [13.9, 25]]);
       energyRings.current.forEach((r, i) => {
         if (!r) return;
-        const e = track(t, [[11.05 + i * 0.12, 0], [11.9 + i * 0.12, 1]]);
+        const e = track(t, [[12.4 + i * 0.12, 0], [13.25 + i * 0.12, 1]]);
         r.scale.setScalar(0.2 + e * 12);
         r.material.opacity = (1 - e) * 0.55;
       });
       if (burst.current) {
-        const e = track(t, [[11.05, 0], [11.85, 1]]);
+        const e = track(t, [[12.4, 0], [13.2, 1]]);
         burst.current.scale.setScalar(0.5 + e * 8);
         burst.current.material.opacity = e > 0 ? (1 - e) * 0.9 : 0;
       }
       if (circuits.current) {
-        const cOp = track(t, [[11.1, 0], [11.4, 0.55], [12, 0.3]]);
+        const cOp = track(t, [[12.45, 0], [12.85, 0.55], [13.9, 0.35]]);
         circuits.current.children.forEach((c, i) => { c.material.opacity = cOp * (1 - i * 0.06); });
       }
-      if (t > 11.05 && !firedRef.current && onButton) { firedRef.current = true; onButton(); }
+      if (t > 11.12 && !firedRef.current && onButton) { firedRef.current = true; onButton(); }
     } catch (_) { /* never throw into RAF */ }
   });
 
@@ -701,11 +704,13 @@ function Rig({ startRef }) {
     try {
       if (startRef.current == null) return;
       const t = (performance.now() - startRef.current) / 1000;
-      const cx = track(t, [[0, 0.1], [2.8, 0], [8.9, 0.05], [10.4, 0.85], [11.3, 1.3], [12, 1.55]]);
-      const cy = track(t, [[0, 1.45], [2.8, 1.2], [11.3, 1.07], [12, 1.03]]);
-      const cz = track(t, [[0, 5.3], [2.8, 4.25], [8.9, 4.1], [10.4, 3.55], [11.3, 3.0], [12, 2.65]]);
+      // Follow to the console (~10.4s), HOLD steady on the button through the press
+      // and the deliberate pause (11.3–12.4s), then push in as the launch FX fire.
+      const cx = track(t, [[0, 0.1], [2.8, 0], [8.9, 0.05], [10.4, 0.85], [11.3, 1.3], [12.4, 1.33], [13.9, 1.55]]);
+      const cy = track(t, [[0, 1.45], [2.8, 1.2], [11.3, 1.1], [12.4, 1.08], [13.9, 1.02]]);
+      const cz = track(t, [[0, 5.3], [2.8, 4.25], [8.9, 4.1], [10.4, 3.55], [11.3, 3.2], [12.4, 3.15], [13.9, 2.5]]);
       camera.position.lerp(target.set(cx, cy, cz), 0.06);
-      const lx = track(t, [[0, 0], [8.9, 0.15], [10.4, 0.9], [11.3, 1.3], [12, 1.5]]);
+      const lx = track(t, [[0, 0], [8.9, 0.15], [10.4, 0.9], [11.3, 1.3], [13.9, 1.5]]);
       camera.lookAt(lx, 1.05, 0);
     } catch (_) { /* ignore */ }
   });

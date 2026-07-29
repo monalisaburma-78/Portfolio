@@ -6,7 +6,7 @@ import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
  * Heavy Three.js scene is code-split and lazy-loaded (portfolio bundle stays light).
  * This wrapper owns everything that must be bullet-proof regardless of WebGL:
  *   • session gate + scroll lock + timing
- *   • the "Welcome to Monalisa's AI Portfolio" text overlay + Skip button
+ *   • the "Welcome to Monalisa's Portfolio" text overlay + Skip button
  *   • a hard fallback timer + error boundary so a broken/absent 3D scene can NEVER
  *     block the portfolio — it always fades into the hero and fires `mona-intro-done`.
  *
@@ -16,7 +16,7 @@ import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
 const IntroScene = lazy(() => import('./IntroScene.jsx'));
 
-const TOTAL_MS = 12000;     // full 3D runtime before handing off
+const TOTAL_MS = 14000;     // full 3D runtime before handing off (press → hold → launch)
 const SKIP_AT_MS = 1800;
 const TEXT_IN_MS = 6600;    // welcome text fades in (scene 4 — presentation gesture)
 const TEXT_OUT_MS = 8800;   // ~2s fully readable while the palm faces the visitor
@@ -102,8 +102,8 @@ const Intro = () => {
       });
       const now = ctx.currentTime;
       master.gain.linearRampToValueAtTime(0.045, now + 1.8);   // swell in through scene 1–2
-      master.gain.setValueAtTime(0.045, now + 9.8);
-      master.gain.linearRampToValueAtTime(0.0001, now + 11.9); // fade out with the launch
+      master.gain.setValueAtTime(0.045, now + 12.2);
+      master.gain.linearRampToValueAtTime(0.0001, now + 13.7); // fade out with the launch
     } catch (_) { /* audio unavailable — intro stays silent */ }
     const onGesture = () => { try { if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {}); } catch (_) { /* ignore */ } };
     window.addEventListener('pointerdown', onGesture, { once: true });
@@ -166,7 +166,7 @@ const Intro = () => {
 
       {/* Welcome text */}
       <div className={`mona-welcome${showText ? ' in' : ''}`}>
-        ✨ Welcome to <span>Monalisa's AI Portfolio</span> ✨
+        ✨ Welcome to <span>Monalisa's Portfolio</span> ✨
       </div>
 
       {/* Final launch flash */}
@@ -186,7 +186,7 @@ const Intro = () => {
 
 const CSS = `
 .mona-root{position:fixed;inset:0;z-index:100000;overflow:hidden;background:#05040a;
-  font-family:'JetBrains Mono',ui-monospace,monospace;animation:monaRootOut .9s ease-in forwards;animation-delay:11.1s;}
+  font-family:'JetBrains Mono',ui-monospace,monospace;animation:monaRootOut .9s ease-in forwards;animation-delay:13.1s;}
 .mona-skipping{animation:monaSkipOut .42s ease-in forwards!important;animation-delay:0s!important;}
 @keyframes monaRootOut{0%,55%{opacity:1}100%{opacity:0;visibility:hidden}}
 @keyframes monaSkipOut{to{opacity:0;visibility:hidden}}
@@ -203,7 +203,7 @@ const CSS = `
 .mona-bracket-bl{bottom:22px;left:22px;border-right:0;border-top:0}
 .mona-bracket-br{bottom:22px;right:22px;border-left:0;border-top:0}
 .mona-status{position:absolute;top:30px;left:0;right:0;text-align:center;color:#9fb0e8;font-size:11px;letter-spacing:.38em;
-  text-transform:uppercase;opacity:0;animation:monaStatus 11.5s ease .5s forwards;text-shadow:0 0 12px rgba(124,58,237,.6)}
+  text-transform:uppercase;opacity:0;animation:monaStatus 13.5s ease .5s forwards;text-shadow:0 0 12px rgba(124,58,237,.6)}
 .mona-status i{color:#60a5fa;font-style:normal;margin:0 .4em;animation:monaBlink 1s steps(1) infinite}
 @keyframes monaStatus{0%{opacity:0}10%{opacity:.9}86%{opacity:.9}100%{opacity:0}}
 @keyframes monaBlink{50%{opacity:0}}
@@ -216,7 +216,7 @@ const CSS = `
 .mona-welcome span{background:linear-gradient(100deg,#a78bfa,#818cf8 45%,#60a5fa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 
 .mona-flash{position:absolute;inset:0;pointer-events:none;opacity:0;z-index:2;
-  background:radial-gradient(circle at 62% 46%,#ffffff,#a5b4fc 32%,#7c3aed 56%,transparent 74%);animation:monaFlash 1.1s ease 10.9s forwards}
+  background:radial-gradient(circle at 62% 46%,#ffffff,#a5b4fc 32%,#7c3aed 56%,transparent 74%);animation:monaFlash 1.1s ease 12.85s forwards}
 @keyframes monaFlash{0%{opacity:0}55%{opacity:.9}100%{opacity:0}}
 
 .mona-skip{position:absolute;right:22px;bottom:22px;z-index:5;display:inline-flex;align-items:center;gap:8px;
